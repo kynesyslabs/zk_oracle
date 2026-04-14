@@ -1,0 +1,14 @@
+services:
+  oracle:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Mount keystore read-only. Path on host can differ — we pin the container path here.
+      - ./oracle.keystore.json:/run/secrets/oracle.keystore.json:ro
+    environment:
+      KEYSTORE_PATH: /run/secrets/oracle.keystore.json
+    # Allows the container to reach the host via host.docker.internal.
+    # Required on Linux; Docker Desktop (Mac/Windows) provides this automatically.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
