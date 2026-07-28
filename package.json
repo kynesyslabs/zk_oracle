@@ -6,7 +6,8 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",
-    "encrypt-key": "bun run scripts/encrypt-key.ts"
+    "encrypt-key": "bun run scripts/encrypt-key.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "ethers": "^6.13.0"

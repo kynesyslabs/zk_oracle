@@ -1,7 +1,7 @@
 import { config } from "./config"
-import { OracleContract } from "./contract"
+import { OracleContract, OracleSubmitError } from "./contract"
 import type { KeystoreWallet } from "./keystore"
-import type { MerkleRootSnapshot } from "./types"
+import { parseSnapshot, type MerkleRootSnapshot } from "./types"
 
 let contract: OracleContract
 let lastKnownLeafCount = 0
@@ -14,7 +14,9 @@ async function fetchMerkleRoot(): Promise<MerkleRootSnapshot> {
     if (!response.ok) {
         throw new Error(`HTTP ${response.status} from ${url}`)
     }
-    return response.json() as Promise<MerkleRootSnapshot>
+    // Validate at the boundary: a malformed read must never reach the contract,
+    // where a bad block number can wedge the registry.
+    return parseSnapshot(await response.json(), { maxBlockNumber: config.maxBlockNumber })
 }
 
 async function tick(): Promise<void> {
@@ -52,23 +54,18 @@ async function tick(): Promise<void> {
         const txHash = await contract.submitVote(rootHash, blockNumber, leafCount)
         console.log(`[oracle] Vote submitted to Base Sepolia — tx: ${txHash}`)
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        const code = (err as any)?.code ?? ""
-
-        // StaleRoot or AlreadyVoted: root already on-chain — keep cursor advanced, move on
-        if (
-            message.includes("StaleRoot") ||
-            message.includes("Stale") ||
-            message.includes("AlreadyVoted") ||
-            // Custom solidity errors come back as CALL_EXCEPTION when not decoded
-            // If we already advanced the cursor and get a revert, treat as already handled
-            code === "CALL_EXCEPTION"
-        ) {
-            console.warn(`[oracle] Vote already recorded on-chain for block ${blockNumber} (${code || "known revert"})`)
+        // Only a decoded StaleRoot/AlreadyVoted means the root is already
+        // accounted for — keep the cursor advanced and move on. Every other
+        // revert (paused, jump-too-large, an undecodable failure) is real: roll
+        // the cursor back so the next tick retries, and surface it loudly. The
+        // old code treated *any* CALL_EXCEPTION as "already recorded", which
+        // silently swallowed genuine failures — including a wedged registry.
+        if (err instanceof OracleSubmitError && err.benign) {
+            console.warn(`[oracle] Root already recorded on-chain for block ${blockNumber} (${err.reason})`)
         } else {
-            // Unexpected error — roll back cursor so next tick retries
             lastKnownLeafCount = prevLeafCount
-            console.error(`[oracle] Failed to submit vote: ${message}`)
+            const reason = err instanceof OracleSubmitError ? err.reason : "error"
+            console.error(`[oracle] Failed to submit vote (${reason}) — will retry: ${err instanceof Error ? err.message : String(err)}`)
         }
     } finally {
         submitting = false
