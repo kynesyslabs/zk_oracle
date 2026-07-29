@@ -25,4 +25,13 @@ export const config = {
         return requireEnv("KEYSTORE_PASSWORD")
     },
     pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS ?? "10000"),
+    /**
+     * Optional sanity ceiling on the Demos block number the node reports. A
+     * corrupted read that returns an absurd height is refused before it reaches
+     * the contract (where too-high a value wedges the registry). Unset = no cap.
+     */
+    maxBlockNumber:
+        process.env.MAX_DEMOS_BLOCK !== undefined
+            ? parseInt(process.env.MAX_DEMOS_BLOCK)
+            : undefined,
 }

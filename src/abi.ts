@@ -189,4 +189,15 @@ export const ABI = [
     { type: "error", name: "InvalidThreshold", inputs: [] },
     { type: "error", name: "OracleAlreadyExists", inputs: [] },
     { type: "error", name: "OracleNotFound", inputs: [] },
+    { type: "error", name: "IsPaused", inputs: [] },
+    { type: "error", name: "NotPaused", inputs: [] },
+    {
+        type: "error",
+        name: "BlockJumpTooLarge",
+        inputs: [
+            { name: "submitted", type: "uint256" },
+            { name: "latest", type: "uint256" },
+            { name: "maxAdvance", type: "uint256" },
+        ],
+    },
 ] as const
