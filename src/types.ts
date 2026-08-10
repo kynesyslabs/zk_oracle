@@ -12,7 +12,45 @@ export class InvalidSnapshotError extends Error {
     }
 }
 
-const HEX_ROOT = /^(0x)?[0-9a-fA-F]{1,64}$/
+// BN254 scalar field modulus. A Poseidon merkle root is a field element in
+// [1, FIELD). The Demos node returns it as a DECIMAL string — that's the form
+// ZK circuits consume — while the registry stores a bytes32. We normalise the
+// field element to a 32-byte hex string here, at the one boundary it enters the
+// chain, so a decimal root is never misread as hex.
+const BN254_FIELD =
+    21888242871839275222246405745257275088548364400416034343698204186575808495617n
+
+/**
+ * Parse the node's rootHash — a decimal field element, or an explicit 0x-hex
+ * value — into a canonical 32-byte hex string. Rejects anything that isn't a
+ * valid, non-zero field element before it can reach the contract.
+ */
+function normaliseRoot(rootHash: unknown): string {
+    if (typeof rootHash !== "string" || rootHash.length === 0) {
+        throw new InvalidSnapshotError(`rootHash must be a string, got ${JSON.stringify(rootHash)}`)
+    }
+    let value: bigint
+    try {
+        if (/^0x[0-9a-fA-F]+$/.test(rootHash)) {
+            value = BigInt(rootHash) // explicit hex
+        } else if (/^[0-9]+$/.test(rootHash)) {
+            value = BigInt(rootHash) // decimal field element — the node's format
+        } else {
+            throw new Error("not a decimal or 0x-hex value")
+        }
+    } catch {
+        throw new InvalidSnapshotError(
+            `rootHash must be a decimal or 0x-hex field element, got ${JSON.stringify(rootHash)}`,
+        )
+    }
+    if (value === 0n) {
+        throw new InvalidSnapshotError("rootHash is zero (empty/uninitialised tree)")
+    }
+    if (value >= BN254_FIELD) {
+        throw new InvalidSnapshotError(`rootHash ${rootHash} is not a valid field element`)
+    }
+    return `0x${value.toString(16).padStart(64, "0")}`
+}
 
 /**
  * Validate a `/zk/merkle-root` response before it is ever put on-chain.
@@ -36,13 +74,9 @@ export function parseSnapshot(
     }
     const { rootHash, blockNumber, leafCount } = raw as Record<string, unknown>
 
-    if (typeof rootHash !== "string" || !HEX_ROOT.test(rootHash)) {
-        throw new InvalidSnapshotError(`rootHash must be a hex string, got ${JSON.stringify(rootHash)}`)
-    }
-    // An all-zero root is the empty/uninitialised value, never a real tree.
-    if (/^(0x)?0*$/.test(rootHash)) {
-        throw new InvalidSnapshotError("rootHash is zero")
-    }
+    // The node hands back the root as a decimal field element; the registry
+    // takes bytes32. Normalise + validate before anything else.
+    const root = normaliseRoot(rootHash)
 
     if (!isSafeNonNegativeInt(blockNumber) || (blockNumber as number) <= 0) {
         throw new InvalidSnapshotError(`blockNumber must be a positive integer, got ${JSON.stringify(blockNumber)}`)
@@ -58,7 +92,7 @@ export function parseSnapshot(
     }
 
     return {
-        rootHash,
+        rootHash: root,
         blockNumber: blockNumber as number,
         leafCount: leafCount as number,
     }

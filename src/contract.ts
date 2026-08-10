@@ -99,7 +99,12 @@ function extractRevertData(err: unknown): string | null {
     return null
 }
 
+// parseSnapshot already normalises the root to a canonical 32-byte hex string,
+// so this is a strict guard, not a converter: never silently truncate or pad a
+// value into bytes32, which would put a wrong root on-chain.
 function normaliseBytes32(value: string): string {
-    const hex = value.startsWith("0x") ? value.slice(2) : value
-    return `0x${hex.padStart(64, "0").slice(0, 64)}`
+    if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+        throw new Error(`expected a 0x-prefixed 32-byte hex root, got ${value}`)
+    }
+    return value.toLowerCase()
 }
