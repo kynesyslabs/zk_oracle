@@ -84,3 +84,5 @@ On startup the server decrypts the keystore (once), logs the wallet address, the
 3. When `threshold` unique oracles submit the same root, the contract finalises it and emits `RootUpdated`
 4. Stale or duplicate submissions are rejected by the contract and handled without crashing
 5. On `SIGTERM` / `SIGINT` the server exits cleanly (safe for Docker / systemd)
+
+<!-- ci: coolify deploy-notification test 2026-08-26 -->
