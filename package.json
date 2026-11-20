@@ -1,6 +1,7 @@
 {
   "name": "zk-oracle-server",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Oracle server that publishes Demos ZK merkle roots to an EVM network",
   "type": "module",
   "scripts": {
