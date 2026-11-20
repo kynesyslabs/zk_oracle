@@ -6,9 +6,14 @@ export const ABI = [
         "type": "constructor",
         "inputs": [
             {
-                "name": "initialOracle",
-                "type": "address",
-                "internalType": "address"
+                "name": "initialOracles",
+                "type": "address[]",
+                "internalType": "address[]"
+            },
+            {
+                "name": "threshold_",
+                "type": "uint256",
+                "internalType": "uint256"
             },
             {
                 "name": "verifier_",
