@@ -61,13 +61,14 @@ function normaliseRoot(rootHash: unknown): string {
  * that isn't well-formed here, at the one place it enters the chain.
  *
  * @param raw   The parsed JSON body from the node.
+ * @param opts.allowEmptyTree  Accept the empty tree (block 0, no leaves).
  * @param opts.maxBlockNumber  Optional ceiling; reject blocks above it. A cheap
  *              sanity bound against a corrupted read, disabled when omitted.
  * @throws InvalidSnapshotError on anything that isn't safe to submit.
  */
 export function parseSnapshot(
     raw: unknown,
-    opts: { maxBlockNumber?: number } = {},
+    opts: { maxBlockNumber?: number; allowEmptyTree?: boolean } = {},
 ): MerkleRootSnapshot {
     if (raw === null || typeof raw !== "object") {
         throw new InvalidSnapshotError(`expected an object, got ${typeof raw}`)
@@ -78,7 +79,10 @@ export function parseSnapshot(
     // takes bytes32. Normalise + validate before anything else.
     const root = normaliseRoot(rootHash)
 
-    if (!isSafeNonNegativeInt(blockNumber) || (blockNumber as number) <= 0) {
+    // A chain with no registration yet reports block 0 and no leaves. That is a
+    // valid "nothing to anchor" answer, never something to vote on.
+    const emptyTree = opts.allowEmptyTree === true && blockNumber === 0 && leafCount === 0
+    if (!emptyTree && (!isSafeNonNegativeInt(blockNumber) || (blockNumber as number) <= 0)) {
         throw new InvalidSnapshotError(`blockNumber must be a positive integer, got ${JSON.stringify(blockNumber)}`)
     }
     if (opts.maxBlockNumber !== undefined && (blockNumber as number) > opts.maxBlockNumber) {
@@ -100,4 +104,32 @@ export function parseSnapshot(
 
 function isSafeNonNegativeInt(v: unknown): v is number {
     return typeof v === "number" && Number.isSafeInteger(v) && v >= 0
+}
+
+/** The chain a node is on, as `getChainIdentity` reports it. */
+export interface ChainIdentity {
+    chainId: number | null
+    /** Block-0 hash as 0x + 64 lower-case hex: the registry's epoch id. */
+    genesisHash: string
+}
+
+/**
+ * Validate the `response` of the node's `getChainIdentity` call. The genesis
+ * hash is what the registry keys epochs by, so it must be an exact 32-byte value.
+ */
+export function parseChainIdentity(raw: unknown): ChainIdentity {
+    if (raw === null || typeof raw !== "object") {
+        throw new InvalidSnapshotError(`chain identity must be an object, got ${typeof raw}`)
+    }
+    const { chainId, genesisHash } = raw as Record<string, unknown>
+    if (typeof genesisHash !== "string" || !/^(0x)?[0-9a-fA-F]{64}$/.test(genesisHash)) {
+        throw new InvalidSnapshotError(`genesisHash must be 32 bytes of hex, got ${JSON.stringify(genesisHash)}`)
+    }
+    if (chainId !== null && !isSafeNonNegativeInt(chainId)) {
+        throw new InvalidSnapshotError(`chainId must be an integer or null, got ${JSON.stringify(chainId)}`)
+    }
+    return {
+        chainId: chainId as number | null,
+        genesisHash: `0x${genesisHash.replace(/^0x/, "").toLowerCase()}`,
+    }
 }
