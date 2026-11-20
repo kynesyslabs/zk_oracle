@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test"
-import { parseSnapshot, InvalidSnapshotError } from "../src/types"
+import { parseSnapshot, parseChainIdentity, InvalidSnapshotError } from "../src/types"
 
 // The node returns rootHash as a DECIMAL field element (BigInt.toString()), not
 // 0x-hex. These fixtures mirror the real `/zk/merkle-root` response shape.
@@ -50,6 +50,14 @@ describe("parseSnapshot — reject bad node reads before they reach the chain", 
         ).toThrow(InvalidSnapshotError)
     })
 
+    it("accepts the empty tree only when asked to", () => {
+        const snap = parseSnapshot({ rootHash: EMPTY_TREE_ROOT, blockNumber: 0, leafCount: 0 }, { allowEmptyTree: true })
+        expect(snap.blockNumber).toBe(0)
+        expect(() =>
+            parseSnapshot({ rootHash: EMPTY_TREE_ROOT, blockNumber: 0, leafCount: 3 }, { allowEmptyTree: true }),
+        ).toThrow(InvalidSnapshotError)
+    })
+
     it("rejects a zero root — decimal and hex", () => {
         expect(() => parseSnapshot({ ...GOOD, rootHash: "0" })).toThrow(InvalidSnapshotError)
         expect(() => parseSnapshot({ ...GOOD, rootHash: "0x0" })).toThrow(InvalidSnapshotError)
@@ -79,5 +87,22 @@ describe("parseSnapshot — reject bad node reads before they reach the chain", 
     it("enforces the optional maxBlockNumber ceiling", () => {
         expect(() => parseSnapshot(GOOD, { maxBlockNumber: 50 })).toThrow(InvalidSnapshotError)
         expect(parseSnapshot(GOOD, { maxBlockNumber: 200 }).blockNumber).toBe(100)
+    })
+})
+
+describe("parseChainIdentity", () => {
+    it("normalises the genesis hash to 0x + lower-case hex", () => {
+        const id = parseChainIdentity({ chainId: 8587492, genesisHash: "AB".repeat(32), genesisDataHash: "x" })
+        expect(id).toEqual({ chainId: 8587492, genesisHash: "0x" + "ab".repeat(32) })
+    })
+
+    it("accepts a null chain id", () => {
+        expect(parseChainIdentity({ chainId: null, genesisHash: "0x" + "01".repeat(32) }).chainId).toBeNull()
+    })
+
+    it("rejects a genesis hash that is not 32 bytes", () => {
+        expect(() => parseChainIdentity({ chainId: 1, genesisHash: "ab" })).toThrow(InvalidSnapshotError)
+        expect(() => parseChainIdentity({ chainId: 1 })).toThrow(InvalidSnapshotError)
+        expect(() => parseChainIdentity(null)).toThrow(InvalidSnapshotError)
     })
 })

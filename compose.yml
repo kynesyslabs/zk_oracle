@@ -8,6 +8,10 @@ services:
       - ./oracle.keystore.json:/run/secrets/oracle.keystore.json:ro
     environment:
       KEYSTORE_PATH: /run/secrets/oracle.keystore.json
+      HEALTH_PORT: "8080"
+    ports:
+      # Health endpoint, on the host's loopback only.
+      - "127.0.0.1:${HEALTH_HOST_PORT:-8080}:8080"
     # Allows the container to reach the host via host.docker.internal.
     # Required on Linux; Docker Desktop (Mac/Windows) provides this automatically.
     extra_hosts:
