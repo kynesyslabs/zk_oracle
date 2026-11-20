@@ -85,4 +85,8 @@ On startup the server decrypts the keystore (once), logs the wallet address, the
 4. Stale or duplicate submissions are rejected by the contract and handled without crashing
 5. On `SIGTERM` / `SIGINT` the server exits cleanly (safe for Docker / systemd)
 
+## License
+
+MIT, see [LICENSE](LICENSE).
+
 <!-- ci: coolify deploy-notification test 2026-08-26 -->
