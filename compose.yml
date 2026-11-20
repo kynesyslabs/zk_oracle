@@ -9,6 +9,8 @@ services:
     environment:
       KEYSTORE_PATH: /run/secrets/oracle.keystore.json
       HEALTH_PORT: "8080"
+      # Reachable through the published port, which compose binds to host loopback.
+      HEALTH_HOST: "0.0.0.0"
     ports:
       # Health endpoint, on the host's loopback only.
       - "127.0.0.1:${HEALTH_HOST_PORT:-8080}:8080"

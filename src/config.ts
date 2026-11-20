@@ -31,6 +31,8 @@ export interface OracleConfig {
     pollIntervalMs: number
     maxBlockNumber?: number
     health: { port: number; host: string }
+    /** Polls the registry may stay behind the nodes before /health turns unhealthy. */
+    maxLagTicks: number
     keystorePath: string
 }
 
@@ -133,8 +135,11 @@ export function loadConfig(env: Env = process.env): OracleConfig {
         health: {
             /** 0 disables the health server. */
             port: int(env, "HEALTH_PORT", 8080),
-            host: env.HEALTH_HOST?.trim() || "0.0.0.0",
+            // Loopback unless asked: /health describes the deployment, and a
+            // container that publishes the port sets HEALTH_HOST=0.0.0.0 itself.
+            host: env.HEALTH_HOST?.trim() || "127.0.0.1",
         },
+        maxLagTicks: int(env, "MAX_LAG_POLLS", 30, 1),
         keystorePath: required(env, "KEYSTORE_PATH"),
     }
 }

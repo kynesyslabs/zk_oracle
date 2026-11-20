@@ -1,5 +1,6 @@
 import { OracleSubmitError, type Registry, type RegistryState, type OnChainRoot } from "./contract"
 import type { NodeReading, NodeResult, QuorumResult } from "./demos"
+import { errorMessage, redactUrls, urlOrigin } from "./redact"
 
 export interface NodeSource {
     read(): Promise<QuorumResult>
@@ -26,6 +27,17 @@ export interface HealthSnapshot {
     epochMatch: boolean | null
     lagBlocks: number | null
     lastError: { at: string; message: string } | null
+    /** Consecutive ticks the registry stayed behind the nodes. */
+    lagTicks: number
+}
+
+export interface OracleOptions {
+    /**
+     * Ticks the registry may stay behind the nodes before this oracle reports
+     * unhealthy. Waiting on the other oracles is normal for a few polls; a root
+     * that never finalises (too few live oracles, a split vote) is not.
+     */
+    maxLagTicks?: number
 }
 
 interface Cursor {
@@ -38,9 +50,9 @@ interface Cursor {
 type Log = { info(m: string): void; warn(m: string): void; error(m: string): void }
 
 const consoleLog: Log = {
-    info: m => console.log(`[oracle] ${m}`),
-    warn: m => console.warn(`[oracle] ${m}`),
-    error: m => console.error(`[oracle] ${m}`),
+    info: m => console.log(`[oracle] ${redactUrls(m)}`),
+    warn: m => console.warn(`[oracle] ${redactUrls(m)}`),
+    error: m => console.error(`[oracle] ${redactUrls(m)}`),
 }
 
 /**
@@ -53,6 +65,9 @@ export class Oracle {
     private cursor: Cursor | null = null
     private epochMismatchSeen = false
     private tickFailed = false
+    private failedThisTick = false
+    private lagTicks = 0
+    private readonly maxLagTicks: number
     private lastTickAt: Date | null = null
     private lastVoteAt: Date | null = null
     private lastVoteTx: string | null = null
@@ -68,15 +83,21 @@ export class Oracle {
         private readonly networkName: string,
         private readonly log: Log = consoleLog,
         private readonly now: () => Date = () => new Date(),
-    ) {}
+        opts: OracleOptions = {},
+    ) {
+        this.maxLagTicks = opts.maxLagTicks ?? 30
+    }
 
     async tick(): Promise<void> {
-        this.tickFailed = false
+        // Published only when the tick ends, so /health never shows a tick in
+        // progress as healthy just because it has not failed yet.
+        this.failedThisTick = false
         try {
             await this.step()
         } catch (err) {
-            this.fail(`tick failed: ${err instanceof Error ? err.message : String(err)}`)
+            this.fail(`tick failed: ${errorMessage(err)}`)
         } finally {
+            this.tickFailed = this.failedThisTick
             this.lastTickAt = this.now()
         }
     }
@@ -99,13 +120,16 @@ export class Oracle {
         this.lastReading = { reading, agreeing: quorum.agreeing, at: this.now() }
 
         this.epochMatch = reading.genesisHash === state.genesisHash
-        if (!this.epochMatch) {
+        if (this.epochMatch) {
+            this.epochMismatchSeen = false
+        } else {
             this.epochMismatchSeen = true
             return this.fail(
                 `epoch mismatch: nodes are on genesis ${reading.genesisHash}, registry epoch ${state.epochId} is ${state.genesisHash}; ` +
                     `not voting until the owner calls startEpoch for this chain`,
             )
         }
+        this.lagTicks = reading.blockNumber > state.latest.blockNumber ? this.lagTicks + 1 : 0
         if (reading.leafCount === 0) return // empty tree on this chain: nothing to anchor yet
         if (!state.isOracle) return this.fail(`${this.registry.oracleAddress} is not an oracle of the registry`)
         if (state.paused) return this.fail("registry is paused")
@@ -171,7 +195,7 @@ export class Oracle {
             this.log.info(`vote mined on ${this.networkName}: ${txHash}`)
         } catch (err) {
             const reason = err instanceof OracleSubmitError ? err.reason : "error"
-            const message = err instanceof Error ? err.message : String(err)
+            const message = errorMessage(err)
             if (reason === "AlreadyVoted") {
                 this.cursor = target
                 this.log.warn(`vote for block ${target.blockNumber} already recorded (${message})`)
@@ -200,9 +224,10 @@ export class Oracle {
     }
 
     private fail(message: string): void {
-        this.tickFailed = true
-        this.lastError = { at: this.now(), message }
-        this.log.error(message)
+        const safe = redactUrls(message)
+        this.failedThisTick = true
+        this.lastError = { at: this.now(), message: safe }
+        this.log.error(safe)
     }
 
     /**
@@ -219,7 +244,12 @@ export class Oracle {
             this.submitting ||
             (this.lastTickAt !== null && this.now().getTime() - this.lastTickAt.getTime() <= staleAfterMs)
         return {
-            healthy: fresh && this.lastTickAt !== null && !this.tickFailed && this.epochMatch === true,
+            healthy:
+                fresh &&
+                this.lastTickAt !== null &&
+                !this.tickFailed &&
+                this.epochMatch === true &&
+                this.lagTicks <= this.maxLagTicks,
             network: this.networkName,
             contract: this.registry.contractAddress,
             oracle: this.registry.oracleAddress,
@@ -243,6 +273,7 @@ export class Oracle {
             epochMatch: this.epochMatch,
             lagBlocks: lag,
             lastError: this.lastError ? { at: this.lastError.at.toISOString(), message: this.lastError.message } : null,
+            lagTicks: this.lagTicks,
         }
     }
 }
@@ -259,6 +290,6 @@ function sameCursor(a: Cursor | null, b: Cursor): boolean {
 
 function nodeSummary(n: NodeResult): HealthSnapshot["nodes"][number] {
     return n.ok
-        ? { url: n.url, ok: true, blockNumber: n.reading.blockNumber, rootHash: n.reading.rootHash, genesisHash: n.reading.genesisHash }
-        : { url: n.url, ok: false, error: n.error }
+        ? { url: urlOrigin(n.url), ok: true, blockNumber: n.reading.blockNumber, rootHash: n.reading.rootHash, genesisHash: n.reading.genesisHash }
+        : { url: urlOrigin(n.url), ok: false, error: redactUrls(n.error) }
 }

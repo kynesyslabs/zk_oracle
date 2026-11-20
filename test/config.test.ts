@@ -34,6 +34,8 @@ describe("loadConfig", () => {
         expect(c.demos.quorum).toBe(2)
         expect(c.demos.requireAllReachable).toBe(true)
         expect(c.health.port).toBe(8080)
+        expect(c.health.host).toBe("127.0.0.1")
+        expect(c.maxLagTicks).toBe(30)
     })
 
     it("labels the network by chain id when no name is given", () => {

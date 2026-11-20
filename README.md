@@ -102,7 +102,8 @@ See `.env.example` for every variable with comments.
 | `MAX_FEE_BUMPS` | no | `3` | Replacements before giving up until the next tick |
 | `POLL_INTERVAL_MS` | no | `10000` | Pause between ticks |
 | `HEALTH_PORT` | no | `8080` | Port of `GET /health` (`0` disables) |
-| `HEALTH_HOST` | no | `0.0.0.0` | Bind address of the health server |
+| `HEALTH_HOST` | no | `127.0.0.1` | Bind address of the health server (compose sets `0.0.0.0` in the container) |
+| `MAX_LAG_POLLS` | no | `30` | Polls the registry may stay behind the nodes before `/health` is unhealthy |
 | `MAX_DEMOS_BLOCK` | no | | Sanity ceiling on a reported block number |
 
 ## How it works
@@ -132,7 +133,10 @@ Every tick (`POLL_INTERVAL_MS` after the previous one finished):
 `lastSeenNodeRoot` (with the number of agreeing nodes), per-node status, `onChain`
 (epoch, genesis hash, latest root, paused, isOracle), `epochMatch`, `lagBlocks`
 (node block minus the registry's latest block) and `lastError`. The status is
-`200` when the last tick succeeded and the epochs match, `503` otherwise. The
+`200` when the last tick succeeded, the epochs match and the registry has not
+stayed behind the nodes for more than `MAX_LAG_POLLS` polls (`lagTicks`), `503`
+otherwise. URLs in errors and node entries are cut to scheme and host, since RPC
+URLs often carry API keys. The
 Docker image uses it as its `HEALTHCHECK`.
 
 ## License

@@ -1,3 +1,4 @@
+import { errorMessage } from "./redact"
 import { parseChainIdentity, parseSnapshot, type MerkleRootSnapshot } from "./types"
 
 /** What one node says: its tree state plus the chain it is on. */
@@ -92,7 +93,7 @@ export class DemosReader {
             const identity = parseChainIdentity(envelope.response)
             return { url, ok: true, reading: { ...snapshot, ...identity } }
         } catch (err) {
-            return { url, ok: false, error: err instanceof Error ? err.message : String(err) }
+            return { url, ok: false, error: errorMessage(err) }
         }
     }
 

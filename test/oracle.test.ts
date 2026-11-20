@@ -132,7 +132,7 @@ describe("Oracle", () => {
         expect(oracle.health().healthy).toBe(true)
     })
 
-    it("treats StaleRoot after an epoch mismatch as an error", async () => {
+    it("treats StaleRoot as an error when the registry does not hold the block", async () => {
         const { nodes, reg, oracle } = make()
         nodes.set({ genesisHash: G2 })
         await oracle.tick() // mismatch observed
@@ -206,6 +206,82 @@ describe("Oracle", () => {
         expect(oracle.health(1000).healthy).toBe(true)
         now = 5000
         expect(oracle.health(1000).healthy).toBe(false)
+    })
+})
+
+describe("Oracle health truthfulness", () => {
+    const KEY = "apiKey0123456789abcdef"
+
+    it("never logs or serves an RPC URL with its key", async () => {
+        const { reg, oracle, errors } = make()
+        reg.submitImpl = async () => {
+            throw new Error(`server response 429 (requestUrl="https://rpc.example/v3/${KEY}")`)
+        }
+        await oracle.tick()
+        const h = oracle.health()
+        expect(h.lastError?.message).toContain("https://rpc.example/<redacted>")
+        expect(JSON.stringify(h)).not.toContain(KEY)
+        expect(errors.join()).not.toContain(KEY)
+    })
+
+    it("redacts node URLs and node errors in /health", async () => {
+        const { nodes, oracle } = make()
+        nodes.next = {
+            ok: false,
+            reason: "only 0 of 1 node(s) answered, quorum is 1",
+            nodes: [{ url: `https://node.example/${KEY}`, ok: false, error: `HTTP 502 from https://node.example/${KEY}/zk/merkle-root` }],
+        }
+        await oracle.tick()
+        expect(JSON.stringify(oracle.health())).not.toContain(KEY)
+    })
+
+    it("does not report a tick in progress as healthy after a failed one", async () => {
+        const { nodes, reg, oracle } = make()
+        nodes.next = { ok: false, reason: "down", nodes: [] }
+        await oracle.tick()
+        expect(oracle.health().healthy).toBe(false)
+
+        nodes.set({})
+        const seen: boolean[] = []
+        reg.submitImpl = async () => {
+            seen.push(oracle.health().healthy) // observed mid-tick
+            return "0xtx"
+        }
+        await oracle.tick()
+        expect(seen).toEqual([false])
+        expect(oracle.health().healthy).toBe(true)
+    })
+
+    it("turns unhealthy when the root never finalises", async () => {
+        const nodes = new FakeNodes()
+        const reg = new FakeRegistry()
+        const oracle = new Oracle(nodes, reg, "test-net", silent, undefined, { maxLagTicks: 2 })
+        await oracle.tick() // votes; registry still behind (threshold not met)
+        expect(oracle.health().healthy).toBe(true)
+        await oracle.tick() // already voted, waiting
+        expect(oracle.health().healthy).toBe(true)
+        await oracle.tick()
+        expect(oracle.health().healthy).toBe(false)
+        expect(oracle.health().lagTicks).toBe(3)
+
+        reg.state.latest = { rootHash: root(5), blockNumber: 100, leafCount: 5, updatedAt: 1, epochId: 1n }
+        await oracle.tick()
+        expect(oracle.health().healthy).toBe(true)
+        expect(oracle.health().lagTicks).toBe(0)
+    })
+
+    it("forgets an epoch mismatch once the epochs match again", async () => {
+        const { nodes, reg, oracle } = make()
+        nodes.set({ genesisHash: G2 })
+        await oracle.tick() // mismatch
+        nodes.set({ genesisHash: G1 })
+        reg.submitImpl = async () => {
+            // The other oracles finalised it first.
+            reg.state.latest = { rootHash: root(5), blockNumber: 100, leafCount: 5, updatedAt: 1, epochId: 1n }
+            throw new OracleSubmitError("StaleRoot", "StaleRoot(100, 100)")
+        }
+        await oracle.tick()
+        expect(oracle.health().healthy).toBe(true)
     })
 })
 

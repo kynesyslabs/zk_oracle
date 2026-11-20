@@ -5,12 +5,13 @@ import { DemosReader } from "./demos"
 import { startHealthServer, type HealthServer } from "./health"
 import { loadWalletFromKeystore } from "./keystore"
 import { Oracle } from "./oracle"
+import { errorMessage, urlOrigin } from "./redact"
 
 let config: OracleConfig
 try {
     config = loadConfig()
 } catch (err) {
-    console.error(`[oracle] ${err instanceof Error ? err.message : String(err)}`)
+    console.error(`[oracle] ${errorMessage(err)}`)
     if (err instanceof ConfigError) console.error("[oracle] Copy .env.example to .env and fill in the values")
     process.exit(1)
 }
@@ -33,17 +34,20 @@ try {
     registry = new RegistryClient(wallet, provider, config.evm)
     await registry.assertNetwork()
 } catch (err) {
-    console.error(`[oracle] ${err instanceof Error ? err.message : String(err)}`)
+    console.error(`[oracle] ${errorMessage(err)}`)
     process.exit(1)
 }
 
 console.log(`[oracle] Oracle ${registry.oracleAddress} on ${config.evm.networkName} (chain ${config.evm.chainId}), registry ${config.evm.contractAddress}`)
-console.log(`[oracle] Demos nodes: ${config.demos.urls.join(", ")} (quorum ${config.demos.quorum}${config.demos.requireAllReachable ? ", all reachable must agree" : ""})`)
+console.log(`[oracle] Demos nodes: ${config.demos.urls.map(urlOrigin).join(", ")} (quorum ${config.demos.quorum}${config.demos.requireAllReachable ? ", all reachable must agree" : ""})`)
 
 const oracle = new Oracle(
     new DemosReader({ ...config.demos, maxBlockNumber: config.maxBlockNumber }),
     registry,
     config.evm.networkName,
+    undefined,
+    undefined,
+    { maxLagTicks: config.maxLagTicks },
 )
 
 // A tick can wait on a vote through every fee bump; count that as fresh.

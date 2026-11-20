@@ -365,6 +365,11 @@ export const ABI = [
         "inputs": [
             {
                 "name": "",
+                "type": "address",
+                "internalType": "address"
+            },
+            {
+                "name": "",
                 "type": "uint256",
                 "internalType": "uint256"
             }
@@ -494,6 +499,25 @@ export const ABI = [
         ],
         "outputs": [],
         "stateMutability": "nonpayable"
+    },
+    {
+        "type": "function",
+        "name": "revokedRoot",
+        "inputs": [
+            {
+                "name": "",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "bool",
+                "internalType": "bool"
+            }
+        ],
+        "stateMutability": "view"
     },
     {
         "type": "function",
@@ -1112,6 +1136,17 @@ export const ABI = [
         "type": "error",
         "name": "OracleNotFound",
         "inputs": []
+    },
+    {
+        "type": "error",
+        "name": "RootIsRevoked",
+        "inputs": [
+            {
+                "name": "root",
+                "type": "bytes32",
+                "internalType": "bytes32"
+            }
+        ]
     },
     {
         "type": "error",

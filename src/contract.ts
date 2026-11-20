@@ -2,6 +2,7 @@ import { ethers } from "ethers"
 import { ABI } from "./abi"
 import type { OracleConfig } from "./config"
 import type { KeystoreWallet } from "./keystore"
+import { errorMessage, redactUrls } from "./redact"
 import { TxRevertedError, TxSender, type ReceiptLike, type TxChain, type TxSigner } from "./txsender"
 
 /**
@@ -79,7 +80,7 @@ export class RegistryClient implements Registry {
             waitTimeoutMs: cfg.txWaitTimeoutMs,
             feeBumpPercent: cfg.feeBumpPercent,
             maxFeeBumps: cfg.maxFeeBumps,
-            log: m => console.log(`[oracle] ${m}`),
+            log: m => console.log(`[oracle] ${redactUrls(m)}`),
         })
     }
 
@@ -161,7 +162,7 @@ export class RegistryClient implements Registry {
                 return new OracleSubmitError(parsed.name, `submitVote reverted: ${parsed.name}(${parsed.args.join(", ")})`)
             }
         }
-        const message = err instanceof Error ? err.message : String(err)
+        const message = errorMessage(err)
         return new OracleSubmitError("unknown", `submitVote failed: ${message}`)
     }
 }
